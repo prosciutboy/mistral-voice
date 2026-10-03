@@ -79,6 +79,12 @@
     <div class="note">Clé API ci-dessus utilisée pour cet endpoint aussi — elle doit être valable chez ce fournisseur (ex. clé Z.ai pour GLM).</div>
   </div>
   <div class="field">
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+      <input type="checkbox" id="webSearch" style="width:auto;" />
+      🌐 Activer la recherche web (le modèle peut consulter internet)
+    </label>
+  </div>
+  <div class="field">
     <label for="ttsVoice">Voix de réponse</label>
     <select id="ttsVoice"><option value="">— charge les voix disponibles —</option></select>
     <button class="btn" id="loadVoices" style="margin-top:6px;">🔄 Recharger les voix</button>
@@ -107,6 +113,7 @@ function saveCfg() {
     key: $("apiKey").value.trim(),
     llm: $("llmModel").value === "custom" ? $("customModel").value.trim() : $("llmModel").value,
     baseUrl: $("llmBaseUrl").value.trim(),
+    webSearch: $("webSearch").checked,
     voice: $("ttsVoice").value,
     sys: $("sysPrompt").value
   };
@@ -152,6 +159,7 @@ $("openSettings").onclick = () => {
   $("llmModel").value = cfg.llm || "mistral-small-latest";
   $("customModel").value = cfg.llm && !["mistral-small-latest","mistral-medium-latest","zai-glm-5-3","open-mistral-nemo"].includes(cfg.llm) ? cfg.llm : "";
   $("llmBaseUrl").value = cfg.baseUrl || "";
+  $("webSearch").checked = !!cfg.webSearch;
   $("sysPrompt").value = cfg.sys || $("sysPrompt").value;
   if (cfg.voice) { const s = $("ttsVoice"); s.innerHTML = "<option value='" + cfg.voice + "'>" + cfg.voice + "</option>"; s.value = cfg.voice; }
   $("settings").classList.remove("hidden");
@@ -216,10 +224,12 @@ async function onRecStop() {
     history.push({ role: "user", content: userText });
     const msgs = [{ role: "system", content: cfg.sys || "Réponds brièvement en français." }].concat(history.slice(-20));
     const llmBase = cfg.baseUrl ? cfg.baseUrl.replace(/\/+$/, "") : API;
+    const req = { model: cfg.llm || "mistral-small-latest", messages: msgs };
+    if (cfg.webSearch) req.tools = [{ type: "web_search" }];
     const chatRes = await fetch(llmBase + "/chat/completions", {
       method: "POST",
       headers: { Authorization: "Bearer " + cfg.key, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: cfg.llm || "mistral-small-latest", messages: msgs })
+      body: JSON.stringify(req)
     });
     if (!chatRes.ok) throw new Error("Chat " + chatRes.status + " " + (await chatRes.text()).slice(0, 200));
     const chatData = await chatRes.json();
