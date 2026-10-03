@@ -113,7 +113,7 @@ async function loadVoices() {
   if (!key) { setStatus("Entre ta clé API d'abord"); return; }
   sel.innerHTML = "<option>⏳ Chargement…</option>";
   try {
-    const res = await fetch(API + "/audio/voices?limit=200&offset=0", {
+    const res = await fetch(API + "/audio/voices?limit=100&offset=0", {
       headers: { Authorization: "Bearer " + key }
     });
     if (!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0, 150));
