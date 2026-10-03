@@ -113,12 +113,12 @@ async function loadVoices() {
   if (!key) { setStatus("Entre ta clé API d'abord"); return; }
   sel.innerHTML = "<option>⏳ Chargement…</option>";
   try {
-    const res = await fetch(API + "/audio/voices?limit=100&offset=0", {
+    const res = await fetch(API + "/audio/voices?limit=100&offset=0&type=all", {
       headers: { Authorization: "Bearer " + key }
     });
     if (!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0, 150));
     const data = await res.json();
-    const voices = data.voices || data.data || [];
+    const voices = data.items || data.voices || data.data || [];
     sel.innerHTML = "";
     if (!voices.length) sel.innerHTML = "<option value=''>Aucune voix trouvée</option>";
     voices.forEach(v => {
@@ -129,7 +129,7 @@ async function loadVoices() {
     });
     if (cfg.voice && [...sel.options].some(o => o.value === cfg.voice)) sel.value = cfg.voice;
     else {
-      const fr = [...sel.options].find(o => /fr/i.test(o.textContent));
+      const fr = [...sel.options].find(o => /fr|français|marie/i.test(o.textContent));
       if (fr) sel.value = fr.value;
     }
   } catch (e) {
