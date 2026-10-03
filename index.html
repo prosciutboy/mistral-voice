@@ -223,7 +223,16 @@ async function onRecStop() {
     });
     if (!chatRes.ok) throw new Error("Chat " + chatRes.status + " " + (await chatRes.text()).slice(0, 200));
     const chatData = await chatRes.json();
-    const reply = chatData.choices[0].message.content;
+    let reply = chatData.choices[0].message.content;
+    if (Array.isArray(reply)) {
+      reply = reply.filter(b => b && b.type === "text" && b.text)
+                  .map(b => b.text.trim())
+                  .join(" ")
+                  .trim();
+    } else if (typeof reply !== "string") {
+      reply = String(reply || "");
+    }
+    if (!reply) reply = "(réponse vide)";
     history.push({ role: "assistant", content: reply });
     addMsg("bot", reply);
 
