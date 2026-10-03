@@ -83,6 +83,7 @@
       <input type="checkbox" id="webSearch" style="width:auto;" />
       🌐 Activer la recherche web (le modèle peut consulter internet)
     </label>
+    <div class="note">Fonctionne uniquement avec les modèles Mistral (Small, Medium…), pas avec GLM.</div>
   </div>
   <div class="field">
     <label for="ttsVoice">Voix de réponse</label>
@@ -225,7 +226,9 @@ async function onRecStop() {
     const msgs = [{ role: "system", content: cfg.sys || "Réponds brièvement en français." }].concat(history.slice(-20));
     const llmBase = cfg.baseUrl ? cfg.baseUrl.replace(/\/+$/, "") : API;
     const req = { model: cfg.llm || "mistral-small-latest", messages: msgs };
-    if (cfg.webSearch) req.tools = [{ type: "web_search" }];
+    const isMistralModel = (cfg.llm || "mistral-small-latest").startsWith("mistral") || (cfg.llm || "").startsWith("open-mistral");
+    if (cfg.webSearch && isMistralModel) req.tools = [{ type: "web_search" }];
+    if (cfg.webSearch && !isMistralModel) addMsg("sys", "ℹ️ Recherche web ignorée : non supportée par ce modèle (uniquement modèles Mistral).");
     const chatRes = await fetch(llmBase + "/chat/completions", {
       method: "POST",
       headers: { Authorization: "Bearer " + cfg.key, "Content-Type": "application/json" },
