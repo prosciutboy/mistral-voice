@@ -66,8 +66,17 @@
     <select id="llmModel">
       <option value="mistral-small-latest">mistral-small-latest (rapide, économique)</option>
       <option value="mistral-medium-latest">mistral-medium-latest (plus doué)</option>
+      <option value="zai-glm-5-3">zai-glm-5-3 (GLM 5.3, hébergé par Mistral)</option>
       <option value="open-mistral-nemo">open-mistral-nemo (petit)</option>
+      <option value="custom">⚙️ Modèle personnalisé (voir ci-dessous)</option>
     </select>
+  </div>
+  <div class="field">
+    <label for="customModel">Modèle personnalisé (si "Modèle personnalisé" choisi)</label>
+    <input type="text" id="customModel" placeholder="ex. glm-5.3-flash, llama-3.3-70b…" />
+    <label for="llmBaseUrl" style="margin-top:10px;">Endpoint compatible OpenAI (optionnel)</label>
+    <input type="text" id="llmBaseUrl" placeholder="ex. https://api.z.ai/api/paas/v4 (vide = api.mistral.ai)" />
+    <div class="note">Clé API ci-dessus utilisée pour cet endpoint aussi — elle doit être valable chez ce fournisseur (ex. clé Z.ai pour GLM).</div>
   </div>
   <div class="field">
     <label for="ttsVoice">Voix de réponse</label>
@@ -96,7 +105,8 @@ const chat = $("chat");
 function saveCfg() {
   cfg = {
     key: $("apiKey").value.trim(),
-    llm: $("llmModel").value,
+    llm: $("llmModel").value === "custom" ? $("customModel").value.trim() : $("llmModel").value,
+    baseUrl: $("llmBaseUrl").value.trim(),
     voice: $("ttsVoice").value,
     sys: $("sysPrompt").value
   };
@@ -113,7 +123,7 @@ async function loadVoices() {
   if (!key) { setStatus("Entre ta clé API d'abord"); return; }
   sel.innerHTML = "<option>⏳ Chargement…</option>";
   try {
-    const res = await fetch(API + "/audio/voices?limit=100&offset=0&type=all", {
+    const res = await fetch(API + "/audio/voices?limit=100&offset=0", {
       headers: { Authorization: "Bearer " + key }
     });
     if (!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0, 150));
@@ -129,7 +139,7 @@ async function loadVoices() {
     });
     if (cfg.voice && [...sel.options].some(o => o.value === cfg.voice)) sel.value = cfg.voice;
     else {
-      const fr = [...sel.options].find(o => /fr|français|marie/i.test(o.textContent));
+      const fr = [...sel.options].find(o => /fr/i.test(o.textContent));
       if (fr) sel.value = fr.value;
     }
   } catch (e) {
@@ -140,6 +150,8 @@ $("loadVoices").onclick = loadVoices;
 $("openSettings").onclick = () => {
   $("apiKey").value = cfg.key || "";
   $("llmModel").value = cfg.llm || "mistral-small-latest";
+  $("customModel").value = cfg.llm && !["mistral-small-latest","mistral-medium-latest","zai-glm-5-3","open-mistral-nemo"].includes(cfg.llm) ? cfg.llm : "";
+  $("llmBaseUrl").value = cfg.baseUrl || "";
   $("sysPrompt").value = cfg.sys || $("sysPrompt").value;
   if (cfg.voice) { const s = $("ttsVoice"); s.innerHTML = "<option value='" + cfg.voice + "'>" + cfg.voice + "</option>"; s.value = cfg.voice; }
   $("settings").classList.remove("hidden");
@@ -203,7 +215,8 @@ async function onRecStop() {
     setStatus("🧠 Réflexion…");
     history.push({ role: "user", content: userText });
     const msgs = [{ role: "system", content: cfg.sys || "Réponds brièvement en français." }].concat(history.slice(-20));
-    const chatRes = await fetch(API + "/chat/completions", {
+    const llmBase = cfg.baseUrl ? cfg.baseUrl.replace(/\/+$/, "") : API;
+    const chatRes = await fetch(llmBase + "/chat/completions", {
       method: "POST",
       headers: { Authorization: "Bearer " + cfg.key, "Content-Type": "application/json" },
       body: JSON.stringify({ model: cfg.llm || "mistral-small-latest", messages: msgs })
@@ -214,7 +227,6 @@ async function onRecStop() {
     history.push({ role: "assistant", content: reply });
     addMsg("bot", reply);
 
-    // 3) Text-to-speech (Voxtral TTS)
     if (!cfg.voice) { setStatus("⚠️ Pas de voix — ouvre les Réglages"); return; }
     setStatus("🔊 Génération de la voix…");
     const tts = await fetch(API + "/audio/speech", {
