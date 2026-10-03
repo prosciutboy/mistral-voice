@@ -71,13 +71,9 @@
   </div>
   <div class="field">
     <label for="ttsVoice">Voix de réponse</label>
-    <select id="ttsVoice">
-      <option value="Ada">Ada</option>
-      <option value="Bella">Bella</option>
-      <option value="Kai">Kai</option>
-      <option value="Nova">Nova</option>
-      <option value="Atlas">Atlas</option>
-    </select>
+    <select id="ttsVoice"><option value="">— charge les voix disponibles —</option></select>
+    <button class="btn" id="loadVoices" style="margin-top:6px;">🔄 Recharger les voix</button>
+    <div class="note">Voix Mistral chargées depuis ton compte API.</div>
   </div>
   <div class="field">
     <label for="sysPrompt">Instructions (prompt système)</label>
@@ -111,11 +107,41 @@ function saveCfg() {
   addMsg("sys", "Configure ton réglage puis appuie sur le micro. Bonne conversation !");
 }
 $("saveBtn").onclick = saveCfg;
+async function loadVoices() {
+  const sel = $("ttsVoice");
+  const key = $("apiKey").value.trim() || cfg.key;
+  if (!key) { setStatus("Entre ta clé API d'abord"); return; }
+  sel.innerHTML = "<option>⏳ Chargement…</option>";
+  try {
+    const res = await fetch(API + "/audio/voices?limit=200&offset=0", {
+      headers: { Authorization: "Bearer " + key }
+    });
+    if (!res.ok) throw new Error(res.status + " " + (await res.text()).slice(0, 150));
+    const data = await res.json();
+    const voices = data.voices || data.data || [];
+    sel.innerHTML = "";
+    if (!voices.length) sel.innerHTML = "<option value=''>Aucune voix trouvée</option>";
+    voices.forEach(v => {
+      const o = document.createElement("option");
+      o.value = v.slug || v.id;
+      o.textContent = (v.name || v.slug || v.id) + (v.languages ? " (" + v.languages.join(", ") + ")" : "");
+      sel.appendChild(o);
+    });
+    if (cfg.voice && [...sel.options].some(o => o.value === cfg.voice)) sel.value = cfg.voice;
+    else {
+      const fr = [...sel.options].find(o => /fr/i.test(o.textContent));
+      if (fr) sel.value = fr.value;
+    }
+  } catch (e) {
+    sel.innerHTML = "<option value=''>❌ " + e.message + "</option>";
+  }
+}
+$("loadVoices").onclick = loadVoices;
 $("openSettings").onclick = () => {
   $("apiKey").value = cfg.key || "";
   $("llmModel").value = cfg.llm || "mistral-small-latest";
-  $("ttsVoice").value = cfg.voice || "Ada";
   $("sysPrompt").value = cfg.sys || $("sysPrompt").value;
+  if (cfg.voice) { const s = $("ttsVoice"); s.innerHTML = "<option value='" + cfg.voice + "'>" + cfg.voice + "</option>"; s.value = cfg.voice; }
   $("settings").classList.remove("hidden");
 };
 if (cfg.key) { $("settings").classList.add("hidden"); addMsg("sys", "Appuie sur le micro et parle."); }
@@ -188,14 +214,20 @@ async function onRecStop() {
     history.push({ role: "assistant", content: reply });
     addMsg("bot", reply);
 
+    // 3) Text-to-speech (Voxtral TTS)
+    if (!cfg.voice) { setStatus("⚠️ Pas de voix — ouvre les Réglages"); return; }
     setStatus("🔊 Génération de la voix…");
     const tts = await fetch(API + "/audio/speech", {
       method: "POST",
       headers: { Authorization: "Bearer " + cfg.key, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "voxtral-mini-tts-2603", voice: cfg.voice || "Ada", input: reply })
+      body: JSON.stringify({ model: "voxtral-mini-tts-2603", voice_id: cfg.voice, input: reply, response_format: "mp3" })
     });
     if (!tts.ok) throw new Error("TTS " + tts.status + " " + (await tts.text()).slice(0, 200));
-    const audioBlob = await tts.blob();
+    const ttsData = await tts.json();
+    const bin = atob(ttsData.audio_data);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const audioBlob = new Blob([bytes], { type: "audio/mp3" });
     const audio = new Audio(URL.createObjectURL(audioBlob));
     audio.onended = () => setStatus("");
     await audio.play();
